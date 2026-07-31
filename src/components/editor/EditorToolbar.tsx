@@ -2,7 +2,7 @@
 
 import { useEditorStore, type CompareMode, type ZoomLevel } from "@/lib/store";
 import {
-  Sparkles, Undo2, Redo2, Download, Home,
+  Sparkles, Undo2, Redo2, Download, ArrowLeft,
   SplitSquareHorizontal, Columns2, ToggleLeft,
   ZoomIn, ZoomOut, Eye,
 } from "lucide-react";
@@ -62,9 +62,11 @@ export default function EditorToolbar() {
       {/* Left */}
       <div className="flex items-center gap-3">
         <Link
-          href="/"
-          className="flex items-center gap-2 text-white/40 transition hover:text-white"
+          href="/dashboard"
+          className="flex items-center gap-1.5 text-white/40 transition hover:text-white"
+          title="Back to dashboard"
         >
+          <ArrowLeft className="h-3.5 w-3.5" />
           <div className="flex h-6 w-6 items-center justify-center rounded bg-accent">
             <Sparkles className="h-3 w-3 text-black" />
           </div>

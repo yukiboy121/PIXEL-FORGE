@@ -1,5 +1,6 @@
 export interface LocalProject {
   id: string;
+  ownerEmail: string;
   name: string;
   originalFilename: string;
   originalWidth: number;
@@ -47,10 +48,11 @@ function createThumbnail(file: File): Promise<string> {
   });
 }
 
-export async function createLocalProject(file: File, width: number, height: number): Promise<LocalProject> {
+export async function createLocalProject(file: File, width: number, height: number, ownerEmail: string): Promise<LocalProject> {
   const now = Date.now();
   const project: LocalProject = {
     id: crypto.randomUUID(),
+    ownerEmail: ownerEmail.toLowerCase(),
     name: file.name.replace(/\.[^/.]+$/, "") || "Untitled Project",
     originalFilename: file.name,
     originalWidth: width,
@@ -72,7 +74,7 @@ export async function createLocalProject(file: File, width: number, height: numb
   return project;
 }
 
-export async function listLocalProjects(): Promise<LocalProject[]> {
+export async function listLocalProjects(ownerEmail: string): Promise<LocalProject[]> {
   const database = await openDatabase();
   const projects = await new Promise<LocalProject[]>((resolve, reject) => {
     const request = database.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
@@ -80,10 +82,12 @@ export async function listLocalProjects(): Promise<LocalProject[]> {
     request.onerror = () => reject(request.error);
   });
   database.close();
-  return projects.sort((a, b) => b.updatedAt - a.updatedAt);
+  return projects
+    .filter((project) => project.ownerEmail === ownerEmail.toLowerCase())
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function getLocalProject(id: string): Promise<LocalProject | undefined> {
+export async function getLocalProject(id: string, ownerEmail: string): Promise<LocalProject | undefined> {
   const database = await openDatabase();
   const project = await new Promise<LocalProject | undefined>((resolve, reject) => {
     const request = database.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(id);
@@ -91,5 +95,18 @@ export async function getLocalProject(id: string): Promise<LocalProject | undefi
     request.onerror = () => reject(request.error);
   });
   database.close();
-  return project;
+  return project?.ownerEmail === ownerEmail.toLowerCase() ? project : undefined;
+}
+
+export async function deleteLocalProject(id: string, ownerEmail: string): Promise<void> {
+  const project = await getLocalProject(id, ownerEmail);
+  if (!project) throw new Error("Project not found");
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    transaction.objectStore(STORE_NAME).delete(id);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
 }

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEditorStore } from "@/lib/store";
 import { getLocalProject } from "@/lib/local-projects";
+import { getSession } from "@/lib/local-auth";
 import { useEffect } from "react";
 
 const EditorToolbar = dynamic(() => import("@/components/editor/EditorToolbar"), { ssr: false });
@@ -25,7 +26,9 @@ function EditorContent() {
       reset();
       return;
     }
-    getLocalProject(projectId).then((project) => {
+    const user = getSession();
+    if (!user) return;
+    getLocalProject(projectId, user.email).then((project) => {
       if (!project) return;
       const file = new File([project.image], project.originalFilename, { type: project.format });
       setOriginalImage(URL.createObjectURL(file), file, project.originalWidth, project.originalHeight);

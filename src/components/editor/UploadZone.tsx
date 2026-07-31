@@ -5,6 +5,7 @@ import { Upload, Image as ImageIcon, X } from "lucide-react";
 import { useEditorStore } from "@/lib/store";
 import { motion, AnimatePresence } from "framer-motion";
 import { createLocalProject } from "@/lib/local-projects";
+import { getSession } from "@/lib/local-auth";
 
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 50 * 1024 * 1024;
@@ -27,11 +28,17 @@ export default function UploadZone() {
         return;
       }
 
+      const user = getSession();
+      if (!user) {
+        setError("Please log in before creating a project.");
+        return;
+      }
+
       const url = URL.createObjectURL(file);
       const img = new window.Image();
       img.onload = async () => {
         try {
-          await createLocalProject(file, img.naturalWidth, img.naturalHeight);
+          await createLocalProject(file, img.naturalWidth, img.naturalHeight, user.email);
         } catch {
           setError("Could not save this project locally. Check available browser storage.");
           URL.revokeObjectURL(url);

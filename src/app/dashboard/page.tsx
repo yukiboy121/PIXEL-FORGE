@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Plus, Image as ImageIcon, Clock, LogOut } from "lucide-react";
+import { Sparkles, Plus, Image as ImageIcon, Clock, LogOut, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getSession, signOut, type LocalUser } from "@/lib/local-auth";
-import { listLocalProjects, type LocalProject } from "@/lib/local-projects";
+import { deleteLocalProject, listLocalProjects, type LocalProject } from "@/lib/local-projects";
 
 function relativeDate(timestamp: number) {
   const minutes = Math.floor((Date.now() - timestamp) / 60000);
@@ -25,8 +25,14 @@ export default function DashboardPage() {
     const currentUser = getSession();
     if (!currentUser) { router.replace("/auth"); return; }
     setUser(currentUser);
-    listLocalProjects().then(setProjects).catch(() => setProjects([]));
+    listLocalProjects(currentUser.email).then(setProjects).catch(() => setProjects([]));
   }, [router]);
+
+  async function removeProject(project: LocalProject) {
+    if (!user || !window.confirm(`Delete “${project.name}”? This removes the image from this browser.`)) return;
+    await deleteLocalProject(project.id, user.email);
+    setProjects((current) => current.filter((item) => item.id !== project.id));
+  }
 
   if (!user) return null;
   const lastActivity = projects[0] ? relativeDate(projects[0].updatedAt) : "No activity";
@@ -46,7 +52,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/5"><ImageIcon className="h-6 w-6 text-white/30" /></span><span><span className="block text-sm font-semibold text-white">{projects.length}</span><span className="text-xs text-white/40">Total Projects</span></span></div>
           <div className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/5"><Clock className="h-6 w-6 text-white/30" /></span><span><span className="block text-sm font-semibold text-white">{lastActivity}</span><span className="text-xs text-white/40">Last Activity</span></span></div>
         </div>
-        <section className="mt-10"><h2 className="mb-4 text-sm font-semibold text-white/60">Recent Projects</h2>{projects.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 p-10 text-center text-sm text-white/35">No projects yet. <Link className="text-accent hover:underline" href="/editor">Create your first project</Link>.</div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{projects.map((project, index) => <motion.div key={project.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}><Link href={`/editor?project=${project.id}`} className="group block overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition hover:border-white/10"><img className="aspect-[4/3] w-full object-cover" src={project.thumbnail} alt="" /><div className="p-4"><h3 className="truncate text-sm font-medium text-white/70 group-hover:text-white">{project.name}</h3><div className="mt-1 flex justify-between"><span className="text-[11px] text-white/30">{relativeDate(project.updatedAt)}</span><span className="text-[10px] font-mono text-white/20">{project.originalWidth} × {project.originalHeight}</span></div></div></Link></motion.div>)}</div>}</section>
+        <section className="mt-10"><h2 className="mb-4 text-sm font-semibold text-white/60">Recent Projects</h2>{projects.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 p-10 text-center text-sm text-white/35">No projects yet. <Link className="text-accent hover:underline" href="/editor">Create your first project</Link>.</div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{projects.map((project, index) => <motion.div key={project.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }} className="group relative overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition hover:border-white/10"><Link href={`/editor?project=${project.id}`} className="block"><img className="aspect-[4/3] w-full object-cover" src={project.thumbnail} alt="" /><div className="p-4"><h3 className="truncate pr-7 text-sm font-medium text-white/70 group-hover:text-white">{project.name}</h3><div className="mt-1 flex justify-between"><span className="text-[11px] text-white/30">{relativeDate(project.updatedAt)}</span><span className="text-[10px] font-mono text-white/20">{project.originalWidth} × {project.originalHeight}</span></div></div></Link><button onClick={() => removeProject(project)} className="absolute right-3 bottom-3 rounded-md p-1.5 text-white/30 transition hover:bg-error/15 hover:text-error" title={`Delete ${project.name}`} aria-label={`Delete ${project.name}`}><Trash2 className="h-3.5 w-3.5" /></button></motion.div>)}</div>}</section>
       </main>
     </div>
   );
