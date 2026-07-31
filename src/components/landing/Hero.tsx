@@ -43,7 +43,7 @@ export default function Hero() {
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              href="/editor"
+              href="/dashboard"
               className="group flex items-center gap-2 rounded-xl bg-accent px-8 py-3.5 text-sm font-semibold text-black transition hover:bg-accent-hover"
             >
               Start Editing

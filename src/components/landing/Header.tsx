@@ -28,7 +28,7 @@ export default function Header() {
 
         <div className="hidden items-center gap-3 md:flex">
           <Link
-            href="/editor"
+            href="/dashboard"
             className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-black transition hover:bg-accent-hover"
           >
             Start Editing
@@ -51,7 +51,7 @@ export default function Header() {
             <a href="#how-it-works" className="text-sm text-white/60" onClick={() => setMenuOpen(false)}>How It Works</a>
             <a href="#pricing" className="text-sm text-white/60" onClick={() => setMenuOpen(false)}>Pricing</a>
             <Link
-              href="/editor"
+              href="/dashboard"
               className="mt-2 rounded-lg bg-accent px-5 py-2.5 text-center text-sm font-semibold text-black"
               onClick={() => setMenuOpen(false)}
             >

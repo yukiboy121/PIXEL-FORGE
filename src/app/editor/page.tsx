@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useEditorStore } from "@/lib/store";
+import { getLocalProject } from "@/lib/local-projects";
+import { useEffect } from "react";
 
 const EditorToolbar = dynamic(() => import("@/components/editor/EditorToolbar"), { ssr: false });
 const ToolSidebar = dynamic(() => import("@/components/editor/ToolSidebar"), { ssr: false });
@@ -13,7 +15,22 @@ const MobileEditor = dynamic(() => import("@/components/editor/MobileEditor"), {
 
 function EditorContent() {
   const originalImageUrl = useEditorStore((s) => s.originalImageUrl);
+  const setOriginalImage = useEditorStore((s) => s.setOriginalImage);
+  const reset = useEditorStore((s) => s.reset);
   const hasImage = !!originalImageUrl;
+
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project");
+    if (!projectId) {
+      reset();
+      return;
+    }
+    getLocalProject(projectId).then((project) => {
+      if (!project) return;
+      const file = new File([project.image], project.originalFilename, { type: project.format });
+      setOriginalImage(URL.createObjectURL(file), file, project.originalWidth, project.originalHeight);
+    });
+  }, [reset, setOriginalImage]);
 
   return (
     <>
