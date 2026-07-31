@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { register, signIn, signInWithGoogle } from "@/lib/local-auth";
 
 type GoogleIdentity = {
-  accounts: { id: { initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void; prompt: () => void } };
+  accounts: { id: {
+    initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void;
+    renderButton: (parent: HTMLElement, options: { theme: "outline"; size: "large"; width: number; text: "continue_with" }) => void;
+  } };
 };
 
 export default function AuthPage() {
@@ -18,35 +21,45 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
-  function handleGoogleSignIn() {
+  useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    const google = (window as Window & { google?: GoogleIdentity }).google;
-    if (!clientId) {
-      setError("Google sign-in needs a free Google OAuth Client ID in .env.local.");
-      return;
-    }
-    if (!google) {
+    if (!clientId) return;
+
+    const configureGoogle = () => {
+      const google = (window as Window & { google?: GoogleIdentity }).google;
+      if (!google || !googleButtonRef.current) return;
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: ({ credential }) => {
+          try {
+            const payload = credential.split(".")[1];
+            if (!payload) throw new Error("Missing Google profile");
+            const decodedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+            const profile = JSON.parse(decodeURIComponent(Array.from(atob(decodedPayload), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""))) as { email: string; name: string };
+            signInWithGoogle(profile.name, profile.email);
+            router.replace("/dashboard");
+          } catch { setError("Google returned an invalid sign-in response. Please try again."); }
+        },
+      });
+      googleButtonRef.current.replaceChildren();
+      google.accounts.id.renderButton(googleButtonRef.current, { theme: "outline", size: "large", width: 372, text: "continue_with" });
+      setGoogleReady(true);
+    };
+
+    if ((window as Window & { google?: GoogleIdentity }).google) {
+      configureGoogle();
+    } else {
       const script = document.createElement("script");
       script.src = "https://accounts.google.com/gsi/client";
       script.async = true;
-      script.onload = handleGoogleSignIn;
+      script.onload = configureGoogle;
+      script.onerror = () => setError("Google sign-in could not load. Check your internet connection or ad blocker.");
       document.head.appendChild(script);
-      return;
     }
-    google.accounts.id.initialize({
-      client_id: clientId,
-      callback: ({ credential }) => {
-        try {
-          const payload = credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-          const profile = JSON.parse(decodeURIComponent(Array.from(atob(payload), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""))) as { email: string; name: string };
-          signInWithGoogle(profile.name, profile.email);
-          router.replace("/dashboard");
-        } catch { setError("Google sign-in could not be completed."); }
-      },
-    });
-    google.accounts.id.prompt();
-  }
+  }, [router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,7 +93,12 @@ export default function AuthPage() {
           <button disabled={isSubmitting} className="w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-black disabled:opacity-50">{isSubmitting ? "Please wait..." : mode === "login" ? "Log in" : "Create account"}</button>
         </form>
         <div className="my-5 flex items-center gap-3 text-xs text-white/20"><span className="h-px flex-1 bg-white/10" />OR<span className="h-px flex-1 bg-white/10" /></div>
-        <button type="button" onClick={handleGoogleSignIn} className="w-full rounded-lg border border-white/10 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white">Continue with Google</button>
+        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+          <div ref={googleButtonRef} className="flex min-h-10 justify-center" aria-label="Continue with Google" />
+        ) : (
+          <p className="rounded-lg border border-white/10 px-3 py-2.5 text-center text-xs text-white/35">Google sign-in will be available after the Client ID is configured and deployed.</p>
+        )}
+        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && !googleReady && <p className="mt-2 text-center text-xs text-white/35">Loading Google sign-in…</p>}
         <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} className="mt-5 w-full text-sm text-white/50 hover:text-white">
           {mode === "login" ? "Need an account? Register" : "Already have an account? Log in"}
         </button>
