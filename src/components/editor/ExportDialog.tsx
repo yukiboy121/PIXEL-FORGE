@@ -7,6 +7,65 @@ import { useCallback, useState, useRef, useEffect } from "react";
 import { applyAdjustmentsToCanvas } from "@/lib/ai/processor";
 import { defaultAdjustments } from "@/lib/ai/types";
 
+const MAX_EXPORT_BYTES = 2 * 1024 * 1024;
+
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Could not encode image"));
+    }, mimeType, quality);
+  });
+}
+
+function resizeCanvas(source: HTMLCanvasElement, width: number, height: number): HTMLCanvasElement {
+  const resized = document.createElement("canvas");
+  resized.width = width;
+  resized.height = height;
+  const context = resized.getContext("2d")!;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, 0, 0, width, height);
+  return resized;
+}
+
+async function encodeWithinSizeLimit(
+  source: HTMLCanvasElement,
+  selectedFormat: "jpeg" | "png" | "webp",
+  selectedQuality: number
+): Promise<{ blob: Blob; format: "jpeg" | "png" | "webp" }> {
+  let format = selectedFormat;
+  let mimeType = `image/${format}`;
+  let quality = selectedQuality / 100;
+  let canvas = source;
+  let blob = await canvasToBlob(canvas, mimeType, quality);
+
+  if (blob.size <= MAX_EXPORT_BYTES) return { blob, format };
+
+  // PNG is lossless and cannot be quality-compressed. WebP preserves visual
+  // detail far better than aggressively reducing JPEG quality.
+  if (format === "png") {
+    format = "webp";
+    mimeType = "image/webp";
+    quality = 0.92;
+    blob = await canvasToBlob(canvas, mimeType, quality);
+  }
+
+  // Preserve the selected quality. If the image still exceeds 2 MB, reduce
+  // dimensions just enough to fit instead of making the image visibly softer.
+  while (blob.size > MAX_EXPORT_BYTES && (canvas.width > 1 || canvas.height > 1)) {
+    const ratio = Math.min(0.95, Math.sqrt((MAX_EXPORT_BYTES * 0.88) / blob.size));
+    const nextWidth = Math.max(1, Math.floor(canvas.width * ratio));
+    const nextHeight = Math.max(1, Math.floor(canvas.height * ratio));
+
+    if (nextWidth === canvas.width && nextHeight === canvas.height) break;
+    canvas = resizeCanvas(canvas, nextWidth, nextHeight);
+    blob = await canvasToBlob(canvas, mimeType, quality);
+  }
+
+  return { blob, format };
+}
+
 function isDefaultAdj(adj: typeof defaultAdjustments): boolean {
   return Object.keys(defaultAdjustments).every(
     (key) =>
@@ -46,9 +105,9 @@ export default function ExportDialog() {
     } else {
       bpp = 0.15 + (exportOptions.quality / 100) * 0.65;
     }
-    const bytes = pixels * bpp;
+    const bytes = Math.min(pixels * bpp, MAX_EXPORT_BYTES);
     const mb = bytes / (1024 * 1024);
-    const est = mb >= 1 ? `~${mb.toFixed(1)} MB` : `~${Math.round(mb * 1024)} KB`;
+    const est = mb >= 1 ? `≤ ${mb.toFixed(1)} MB` : `~${Math.round(mb * 1024)} KB`;
     if (est !== lastEstimateRef.current) {
       lastEstimateRef.current = est;
       setEstimatedSize(est);
@@ -93,27 +152,18 @@ export default function ExportDialog() {
         outputCanvas = scaledCanvas;
       }
 
-      const mimeType = `image/${exportOptions.format}`;
-      const quality = exportOptions.quality / 100;
-
-      outputCanvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            setIsExporting(false);
-            return;
-          }
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `${exportOptions.filename || projectName || "image-enhanced"}.${exportOptions.format === "jpeg" ? "jpg" : exportOptions.format}`;
-          a.click();
-          URL.revokeObjectURL(url);
-          setIsExporting(false);
-          setShowExportDialog(false);
-        },
-        mimeType,
-        quality
+      const { blob, format } = await encodeWithinSizeLimit(
+        outputCanvas,
+        exportOptions.format,
+        exportOptions.quality
       );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${exportOptions.filename || projectName || "image-enhanced"}.${format === "jpeg" ? "jpg" : format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setShowExportDialog(false);
     } catch {
       setIsExporting(false);
     }
@@ -240,6 +290,9 @@ export default function ExportDialog() {
           <div className="rounded-lg bg-white/[0.03] px-4 py-3 text-center">
             <span className="text-[11px] text-white/30">Estimated size: </span>
             <span className="text-[11px] font-medium text-white/50">{estimatedSize}</span>
+            <p className="mt-1 text-[10px] text-white/25">
+              Exports are optimized to a maximum of 2 MB. Large PNG files are saved as WebP.
+            </p>
           </div>
 
           {/* Export Button */}
