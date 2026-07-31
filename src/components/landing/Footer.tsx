@@ -29,7 +29,7 @@ export default function Footer() {
             </span>
           </div>
           <p className="text-xs text-white/30">
-            © {new Date().getFullYear()} PixelForge AI. All rights reserved.
+            © {new Date().getFullYear()} PixelForge | Dev By Mr.YuKi
           </p>
         </div>
       </div>
