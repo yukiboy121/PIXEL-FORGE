@@ -94,8 +94,10 @@ const initialState = {
   zoom: "fit" as ZoomLevel,
   showExportDialog: false,
   exportOptions: {
-    format: "jpeg" as const,
-    quality: 90,
+    // WebP at 80% keeps exports visually sharp while being much smaller than
+    // high-quality JPEG or lossless PNG files.
+    format: "webp" as const,
+    quality: 80,
     scale: 1,
     filename: "image-enhanced",
   },

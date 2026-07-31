@@ -36,13 +36,15 @@ export default function ExportDialog() {
   const newH = Math.round(originalHeight * exportOptions.scale);
 
   useEffect(() => {
-    // Rough estimate
+    // PNG is lossless and generally produces substantially larger files.
     const pixels = newW * newH;
     let bpp: number;
     if (exportOptions.format === "png") {
-      bpp = 4;
+      bpp = 2.5;
+    } else if (exportOptions.format === "webp") {
+      bpp = 0.08 + (exportOptions.quality / 100) * 0.45;
     } else {
-      bpp = 0.3 + (exportOptions.quality / 100) * 1.5;
+      bpp = 0.15 + (exportOptions.quality / 100) * 0.65;
     }
     const bytes = pixels * bpp;
     const mb = bytes / (1024 * 1024);
@@ -200,8 +202,8 @@ export default function ExportDialog() {
             <div className="grid grid-cols-3 gap-2">
               {[
                 { label: "Original", value: 1 },
-                { label: "2×", value: 2 },
-                { label: "4×", value: 4 },
+                { label: "75%", value: 0.75 },
+                { label: "50%", value: 0.5 },
               ].map((opt) => (
                 <button
                   key={opt.value}
