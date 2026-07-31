@@ -4,12 +4,51 @@ import { useEditorStore } from "@/lib/store";
 import { ZoomIn, AlertTriangle, Check, Loader2 } from "lucide-react";
 import { useState, useCallback } from "react";
 
+const MAX_UPSCALE_PIXELS = 32_000_000;
+const MAX_CANVAS_SIDE = 8192;
+
+async function upscaleInBrowser(file: File, width: number, height: number, requestedScale: number) {
+  const safeScale = Math.min(
+    requestedScale,
+    Math.sqrt(MAX_UPSCALE_PIXELS / (width * height)),
+    MAX_CANVAS_SIDE / width,
+    MAX_CANVAS_SIDE / height
+  );
+  if (safeScale < 1) throw new Error("This image is too large to upscale in this browser.");
+
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const source = new Image();
+      source.onload = () => resolve(source);
+      source.onerror = () => reject(new Error("Could not read the original image."));
+      source.src = imageUrl;
+    });
+    const outputWidth = Math.round(width * safeScale);
+    const outputHeight = Math.round(height * safeScale);
+    const canvas = document.createElement("canvas");
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Your browser could not create an image canvas.");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, outputWidth, outputHeight);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Could not create the upscaled image.")), "image/jpeg", 0.92);
+    });
+    return { blob, width: outputWidth, height: outputHeight, wasLimited: safeScale < requestedScale };
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
 export default function UpscalePanel() {
   const { originalWidth, originalHeight, originalFile } = useEditorStore();
   const [scale, setScale] = useState(2);
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [steps, setSteps] = useState<{ label: string; done: boolean }[]>([]);
-  const [result, setResult] = useState<{ width: number; height: number; url: string } | null>(null);
+  const [result, setResult] = useState<{ width: number; height: number; url: string; note?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const upscaleSteps = [
@@ -48,18 +87,34 @@ export default function UpscalePanel() {
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error("Upscale failed");
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        setResult({ width: Math.round(originalWidth * scale), height: Math.round(originalHeight * scale), url });
+        return;
       }
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const newW = Math.round(originalWidth * scale);
-      const newH = Math.round(originalHeight * scale);
-
-      setResult({ width: newW, height: newH, url });
+      // Vercel serverless functions can reject larger images. Use a local
+      // browser fallback so the user can still upscale without an API limit.
+      const localResult = await upscaleInBrowser(originalFile, originalWidth, originalHeight, scale);
+      setResult({
+        width: localResult.width,
+        height: localResult.height,
+        url: URL.createObjectURL(localResult.blob),
+        note: localResult.wasLimited ? "Output was limited to your browser’s safe maximum size." : "Upscaled locally in your browser.",
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upscale failed. Please try again.");
+      try {
+        const localResult = await upscaleInBrowser(originalFile, originalWidth, originalHeight, scale);
+        setResult({
+          width: localResult.width,
+          height: localResult.height,
+          url: URL.createObjectURL(localResult.blob),
+          note: localResult.wasLimited ? "Output was limited to your browser’s safe maximum size." : "Upscaled locally in your browser.",
+        });
+      } catch (fallbackError) {
+        setError(fallbackError instanceof Error ? fallbackError.message : (e instanceof Error ? e.message : "Upscale failed. Please try again."));
+      }
     } finally {
       setIsUpscaling(false);
     }
@@ -177,6 +232,7 @@ export default function UpscalePanel() {
           <p className="mt-1 text-[11px] text-success/60">
             {result.width} × {result.height}
           </p>
+          {result.note && <p className="mt-1 text-[10px] text-success/50">{result.note}</p>}
           <button
             onClick={downloadResult}
             className="mt-3 w-full rounded-lg border border-success/30 py-2 text-xs font-semibold text-success transition hover:bg-success/10"
